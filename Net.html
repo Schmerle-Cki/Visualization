@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>TwitterNetwork</title>
+  <meta charset="UTF-8">
+  <script src="../scripts/Plugin/d3.min.js"></script>
+  <script src="../scripts/Plugin/d3-v6-tip.js"></script>
+  <script src="../scripts/Plugin/jquery-3.4.1.min.js"></script>
+  <script src="../scripts/Plugin/echarts.min.js"></script>
+  <script src="../scripts/common.js"></script>
+  <link href="../styles/common.css" rel="stylesheet">
+</head>
+
+<body>
+     <!--顶部-->
+     <header class="header left">
+        <div class="left nav">
+            <ul>
+                <li><i class="nav_3"></i><a href="prefix.html">前言</a></li>
+                <li><i class="nav_1"></i><a href="wordcloud.html">关键词演进</a> </li>
+                <li><i class="nav_2"></i><a href="Emo.html">推文情绪分布</a> </li>
+                </ul>
+        </div>
+        <div class="header_center left" style="position:relative">
+            
+            <h2><strong>GPT舆论分析可视化</strong></h2>
+    
+        </div>
+        <div class="right nav text_right">
+            <ul>
+                <li><i class="nav_3"></i><a href="trend.html">舆情趋势</a> </li>
+                <li><i class="nav_4"></i><a href="chronic.html">用户组成</a> </li>
+                <li class="nav_active"><i class="nav_5"></i><a href="Net.html">关注网络</a> </li>
+            </ul>
+        </div>
+    </header>
+
+    <div class="con left">
+        <div class="div_any">
+            <div class="div_any03">
+                <!--把相关的html填写在这里-->
+                <div id="user-mask">
+                    <svg width="2080" height="990" id="mainsvg" class="svgs"></svg>
+                    <div class="radar" style="background-color:rgba(211, 214, 210, 0.911);"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+    // The following code is the typical routine of my d3.js code.
+        const svg = d3.select('#user-mask').select('.svgs'); 
+        const box = d3.select('#user-mask').style('position', 'relative').append('div').attr('class', 'tooltip');
+        const width = svg.attr('width');
+        const height = svg.attr('height');
+        const margin = {top: 30, right: 30, bottom: 60, left: 150};
+        const innerWidth = width - margin.left - margin.right;
+        const innerHeight = height - margin.top - margin.bottom;
+        const centerX = width/2+margin.left;
+        const centerY = innerHeight/2+margin.top*2;
+
+        const connectionGroup = svg.append('g');
+        const scatterGroup = svg.append('g');
+
+        const scatterXScale = d3.scaleLinear();
+        const scatterYScale = d3.scaleLinear();
+        const ImpactScale = d3.scaleLinear();
+        const FollowingScale = d3.scaleLinear();
+        const LocalScale = d3.scaleLinear();
+
+        const colorBar = d3.interpolateRainbow;
+        const fontColor = '#606060';
+        const connectionLineColor = 'rgb(240, 233, 233)';
+        const arrowColor = 'rgb(237, 252, 30)';
+
+        const RadiusMin = 30;
+        const RadiusMax = 70;
+        const arrowLength = 16;
+
+        var PersonIndices = new Array();
+        var Xrange = 0;
+        var Yrange = 0;
+
+        /* 
+            Loading data and preprocessing data. 
+            Note that you can also preprocessing data in your own way using your prefered language, e.g., Python. 
+        */
+        d3.csv(`../data/FollowingNet.csv`).then(data => {
+            scatterXScale.domain([d3.min(data, d => parseFloat(d.X)), d3.max(data, d => parseFloat(d.X))]).range([0, innerWidth * 0.75]);
+            scatterYScale.domain([d3.min(data, d => parseFloat(d.Y)), d3.max(data, d => parseFloat(d.Y))]).range([0, innerHeight * 0.75]);
+            
+            var minX = scatterXScale(d3.min(data, d => parseFloat(d.X)));
+            var maxX = scatterXScale(d3.max(data, d => parseFloat(d.X))); 
+            var minY = scatterYScale(d3.min(data, d => parseFloat(d.Y)));
+            var maxY = scatterYScale(d3.max(data, d => parseFloat(d.Y)));  
+            Xrange = maxX - minX;
+            Yrange = maxY - minY;
+            
+            for(var i=0;i<data.length;i++)
+            {
+                data[i]['following'] = stringToNumber(data[i]['following']);
+                data[i]['follower'] = stringToNumber(data[i]['follower']);
+                PersonIndices[data[i]['name']] = i;
+            }
+            ImpactScale.domain([d3.min(data, d => Math.log(d.follower)),d3.max(data, d => Math.log(d.follower))]).range([RadiusMin, RadiusMax]);
+            LocalScale.domain([d3.min(data, d => d.followerLocal),d3.max(data, d => d.followerLocal)]).range([RadiusMin - 25, RadiusMax - 35]);
+            FollowingScale.domain([d3.min(data, d => Math.sqrt(d.following)),d3.max(data, d => Math.sqrt(d.following))]).range([0, 1]);
+
+            drawConnection(data);
+            drawScatter(data);
+            renderToolTip(data);
+        });
+
+        function splitRGB(colorStr) {
+            var color = colorStr.split(')')[0].split('(')[1].split(',');
+            return [parseInt(color[0]), parseInt(color[1]), parseInt(color[2])];
+        }
+
+        function stringToNumber(number)
+        {
+            number = number.replace(',', '');
+            if(number.endsWith('k'))
+                return parseFloat(number.substring(0, number.length - 1)) * 1e3;
+            if(number.endsWith('亿'))
+                return parseFloat(number.substring(0, number.length - 1)) * 1e8;
+            return parseFloat(number);
+        }
+            
+        function drawScatter(data) {
+            const Paths = scatterGroup.attr('class', 'paths')
+                    .selectAll('g')
+                    .data(data)
+                    .enter()
+                    .append("path")
+                    .attr('class', 'text_path')
+                    .attr("id", function(d) {
+                        return `path_${d.name}`;
+                    })
+                    .attr("d", function(d) {
+                        var r = ImpactScale(Math.log(d['follower'])) + 15;
+                        var startX = scatterXScale(d['X']) - r;
+                        var startY = scatterYScale(d['Y']);
+                        var retP = `M ${startX},${startY} A ${r},${r} 0 0,1 ${startX + 2*r},${startY}`; 
+                        console.log(d.name, retP);
+                        return retP;
+                    })
+                    .attr('transform', `translate(${(innerWidth - Xrange)/2}, ${(innerHeight - Yrange)/2})`)
+                    .style("opacity", 0);
+            
+            const Names = scatterGroup.attr('class', 'names')
+                    .selectAll('g')
+                    .data(data)
+                    .enter()
+                    .append("text")
+                    .attr('class', 'text_name')
+                    .append("textPath")
+                    .attr("xlink:href", function(d) {
+                        return `#path_${d.name}`;
+                    })
+                    .style("text-anchor","middle") //place the text halfway on the arc
+                    .attr("startOffset", "50%")
+                    .text(d => d.name)
+                    .attr('transform', `translate(${(innerWidth - Xrange)/2}, ${(innerHeight - Yrange)/2})`)
+                    .style("stroke", "rgba(211, 214, 210, 0.911)")
+                    .style("fill", "#FFFFFF")
+                    .style('font-size', "18px");
+
+            const imgs = scatterGroup
+                    .attr('class', 'scatter')
+                    .selectAll('g')
+                    .data(data)
+                    .enter()
+                    .append("svg:image")
+                    .attr('class', 'person')
+                    .attr("xlink:href", d => {
+                        return `../Assets/${d['name']}.png`;
+                    })
+                   .attr("x", function(d) {
+                        var r = ImpactScale(Math.log(d['follower']));
+                        // var r = LocalScale(d['followerLocal']);
+                        return scatterXScale(d['X']) - r;
+                    })
+                   .attr("y",  d => {
+                        var r = ImpactScale(Math.log(d['follower']));
+                        // var r = LocalScale(d['followerLocal']);
+                        return scatterYScale(d['Y']) - r;
+                    })
+                   .attr("height", d => {
+                        var Value = Math.log(d['follower']);
+                        return 2 * ImpactScale(Value);
+                        // return 2 * LocalScale(d['followerLocal']);
+                    })
+                   .attr("width", d => {
+                        var Value = Math.log(d['follower']);
+                        return 2 * ImpactScale(Value);
+                        // return 2 * LocalScale(d['followerLocal']);
+                    })
+                    .attr('transform', `translate(${(innerWidth - Xrange)/2}, ${(innerHeight - Yrange)/2})`)
+                    .style('filter', d => {
+                        var sqrtValue = Math.sqrt(d['following']);
+                        return `drop-shadow(0 0 15px ${colorBar(FollowingScale(sqrtValue))})`;
+                    })
+                    .on('click', function() {
+                        console.log(this.href.baseVal);
+                        var name = this.href.baseVal.split('.png')[0].split('/')[2];
+                        window.open(`https://twitter.com/${name}`);
+                    });
+        }
+    
+        // 绘制背景网格
+        function drawConnection(data) {
+            const connectionBox = connectionGroup.attr('class', 'edges')
+            .attr('transform', `translate(${(innerWidth - Xrange)/2}, ${(innerHeight - Yrange)/2})`)
+            .attr('text-anchor', 'middle');
+
+            // edges
+            for (let i = 0; i < data.length; i++) {
+                var FollowingList = data[i].list.replaceAll('\'', '\"');
+                var toUsers = JSON.parse(FollowingList);
+
+                var x1 = scatterXScale(data[i].X);
+                var y1 = scatterYScale(data[i].Y);
+                var r1 = ImpactScale(Math.log(data[i].follower));
+                // var r1 = LocalScale(data[i]['followerLocal']);
+                var followingWeight = FollowingScale(Math.sqrt(data[i].following));
+                var ColorStr = colorBar(followingWeight);
+                var LineColor = d3.interpolate(connectionLineColor, ColorStr)(followingWeight);
+
+                for(var uID = 0; uID < toUsers.length; uID++)
+                {
+                    var userIndices = PersonIndices[toUsers[uID]];
+                    var x2 = scatterXScale(data[userIndices].X);
+                    var y2 = scatterYScale(data[userIndices].Y);
+                    var r2 = ImpactScale(Math.log(data[userIndices].follower));
+                    // var r2 = LocalScale(data[userIndices]['followerLocal']);
+                    var dist = Math.sqrt((x2-x1)**2 + (y2-y1)**2);
+                    var tx = x2 + (x1 - x2) * (r2 + arrowLength) / dist;
+                    var ty = y2 + (y1 - y2) * (r2 + arrowLength) / dist;
+                    var rx = x2 + (x1 - x2) * (r2) / dist;
+                    var ry = y2 + (y1 - y2) * (r2) / dist;
+                    // arrow on line
+
+                    var weight = (LocalScale(data[i]['followerLocal'])+LocalScale(data[userIndices]['followerLocal']))/(RadiusMax-RadiusMin-10)/2;
+                    connectionGroup.append("line")
+                    .attr('id', `line_${data[i].name}_${data[userIndices].name}`)
+                    .attr('x1', x1)
+                    .attr('y1', y1)
+                    .attr('x2', x2)
+                    .attr('y2', y2)
+                    .attr('stroke', LineColor)
+                    .attr('stroke-width', weight)
+                    .attr('opacity', 0.1);
+
+                    connectionGroup.append("line")
+                    .attr('id', `larrow_${data[i].name}_${data[userIndices].name}`)
+                    .attr('x1', tx)
+                    .attr('y1', ty)
+                    .attr('x2', rx)
+                    .attr('y2', ry)
+                    .attr('stroke', LineColor)
+                    .attr('stroke-width', 3)
+                    .attr('opacity', 0.1)
+                    .attr('transform-origin', `${rx} ${ry}`)
+                    .attr('transform', `rotate(30)`);
+
+                    connectionGroup.append("line")
+                    .attr('id', `rarrow_${data[i].name}_${data[userIndices].name}`)
+                    .attr('x1', tx)
+                    .attr('y1', ty)
+                    .attr('x2', rx)
+                    .attr('y2', ry)                    
+                    .attr('stroke', LineColor)
+                    .attr('stroke-width', 3)
+                    .attr('opacity', 0.1)
+                    .attr('transform-origin', `${rx} ${ry}`)
+                    .attr('transform', `rotate(-30)`);
+                }
+            }
+
+           // text - userName
+        }
+        // HCI
+        function renderToolTip(data) {
+            // 设置tooltip
+            box.style('position', 'absolute')
+            .style('left', 0).style('top', 0)
+            .style('border-radius', `5px`)
+            .style('box-sizing', `border-box`)
+            .style('opacity', 0)
+            .style('display', 'flex')
+            .style('text-anchor', 'start')
+            .style('font-size', '4px')
+            .html(
+                    `
+                    <div class="container" style="z-index: 999999; display: flex; align-items: center; flex-direction: row; background: #FFFFFF; max-width: 440px; border: 1px solid #EEEEEE; border-radius: 2px; box-shadow: 0 4px 12px rgba(#000, 0.12); margin: 0 0 0 20px; padding: 10px 20px; font-family: 'Open Sans', sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;">
+                        <div class="at-floating-card__content">
+                            <h2 id="username" class="at-floating-card__title" style="margin: 0 0 6px; padding: 0; color: #444444; font-size: 14px !important; font-weight: 700; line-height: 1;">Andy Tran</h2>
+                            <h3 id="job" class="at-floating-card__sub-title" style="margin: 0 0 6px; padding: 0; color: #999999; font-size: 12px !important; font-weight: 600;">Front-End Website Developer</h3>
+                            <p id="intro" class="at-floating-card__description" style="margin: 0 0 6px; padding: 0; color: #999999; font-size: 12px; line-height: 20px;">I am a passionate Front-End Web Developer that loves to experiment with awesome technology such as React, Redux, Angular, Meteor, TweenMax, and many more!</p>
+                            <div class="at-floating-card__footer" style="color: #666666; font-size: 12px; font-weight: 600;">
+                                <span id="following" style="color: inherit; font-size: 10px;"> Following </span>
+                                <span id="follower" style="color: inherit; font-size: 10px;"> Follower </span>
+                            </div>
+                        </div>
+                    </div>
+                    `
+            );
+         
+            // 设置mousemove事件
+            d3.select('.scatter').selectAll('.person')
+                .on('mouseover', function(d, i) {
+                    for(var indices=0;indices<data.length;indices++)
+                    {
+                        if(data[indices].name == i.name) continue;
+
+                        var FollowingList = data[indices].list.replaceAll('\'', '\"');
+                        var toUsers = JSON.parse(FollowingList);
+                        if(toUsers.indexOf(i.name) != -1)
+                        {
+                            connectionGroup.select(`#line_${data[indices].name}_${i.name}`).style('opacity', 0.9);
+                            connectionGroup.select(`#larrow_${data[indices].name}_${i.name}`).style('opacity', 0.9);
+                            connectionGroup.select(`#rarrow_${data[indices].name}_${i.name}`).style('opacity', 0.9);
+                        }
+                    }
+
+                    const svg = document.querySelector('svg');
+                    box.style('opacity', 1);
+                    box.style('left', `${d.x}px`);
+                    box.style('top', `${d.y}px`);
+                    box.select('#username').text(i.name);
+                    box.select('#job').text(`${i.profession}`);
+                    box.select('#follower').text(`🙌 ${i.follower}`);
+                    box.select('#following').text(`❤️ ${i.following}`);
+                    box.select('#intro').text(`${i.selfIntro}`);                    
+                })
+                .on('mouseleave', function(d, i) {
+                    for(var indices=0;indices<data.length;indices++)
+                    {
+                        if(data[indices].name == i.name) continue;
+
+                        var FollowingList = data[indices].list.replaceAll('\'', '\"');
+                        var toUsers = JSON.parse(FollowingList);
+                        if(toUsers.indexOf(i.name) != -1)
+                        {
+                            connectionGroup.select(`#line_${data[indices].name}_${i.name}`).style('opacity', 0.1);
+                            connectionGroup.select(`#larrow_${data[indices].name}_${i.name}`).style('opacity', 0.1);
+                            connectionGroup.select(`#rarrow_${data[indices].name}_${i.name}`).style('opacity', 0.1);
+                        }
+                    }
+                    box.style('opacity', 0);
+                });
+        }
+        
+        
+    </script> 
+</body>
+
+</html>
+
+
+<!DOCTYPE html>
+<html lang="en">
+<body>
+    <script>
+    </script>
+</body>
+</html>

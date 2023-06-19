@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>GPT舆论分析可视化</title>
+    <link href="../styles/common.css" rel="stylesheet">
+    <script src="../scripts/Plugin/d3.min.js"></script>
+    <script src="../scripts/Plugin/d3-v6-tip.js"></script>
+    <script src="../scripts/Plugin/d3.layout.cloud.js"></script>
+    <script src="../scripts/Plugin/jquery-3.4.1.min.js"></script>
+    <script src="../scripts/Plugin/echarts.min.js"></script>
+    <script src="../scripts/common.js"></script>
+    <script src="../scripts/index.js"></script>
+    <script src="../scripts/Plugin/laydate/laydate.js"></script>
+</head>
+<body>
+<!--顶部-->
+<header class="header left">
+    <div class="left nav">
+        <ul>
+            <li><i class="nav_3"></i><a href="prefix.html">前言</a></li>
+            <li class="nav_active"><i class="nav_1"></i><a href="wordcloud.html">关键词演进</a> </li>
+            <li><i class="nav_2"></i><a href="Emo.html">推文情绪分布</a> </li>
+            </ul>
+    </div>
+    <div class="header_center left" style="position:relative">
+        
+        <h2><strong>GPT舆论分析可视化</strong></h2>
+
+    </div>
+    <div class="right nav text_right">
+        <ul>
+            <li><i class="nav_3"></i><a href="trend.html">舆情趋势</a> </li>
+            <li><i class="nav_4"></i><a href="chronic.html">用户组成</a> </li>
+            <li><i class="nav_5"></i><a href="Net.html">关注网络</a> </li>
+        </ul>
+    </div>
+
+</header>
+<!--内容部分-->
+<div class="con left">
+    <div class="div_any">
+        <div class="div_any03">
+            <div id="slider" style="height: 20px; width: 20px; background: #073a0e;"></div>
+            <div>
+                <img id="bird" src="../Assets/bird.png" style="width: 80px; height: 80px; position: absolute; top: 80px; left: 50px;filter: drop-shadow(0 0 5px #eee671);">
+                <div id="birdDate" style="position: absolute; top: 80px; left: 100px; color: #6fdcf0; font-size: 20px; filter: drop-shadow(0 0 5px #71eaee);">text</div>
+            </div>
+            <svg width="1600" height="900" id="mainsvg" class="svgs">
+                
+            </svg>
+        </div>
+    </div>
+</div>
+
+<script>
+    // The following code is the typical routine of my d3.js code. 
+    const svg = d3.select('svg');
+    const width = svg.attr('width');
+    const height = svg.attr('height');
+    const margin = {top: 40, bottom: 20, left: 80, right: 200};
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+    const mainGroup = svg.append('g').attr('id', 'maingroup');
+    const layoutWidth = 1400;
+    const layoutHeight = 900;
+    const color = d3.scaleOrdinal(d3.schemePastel1.concat(d3.schemePastel2));
+    const lenPerpic = 900;
+
+    var birdClick = 0;
+    var CurrDateIndices = 0;
+
+
+    // const scaler = d3.scaleLog()                    
+    const fileTimes = ['0310','0311','0312','0313','0314','0315','0316',
+                       '0317','0318','0319','0320','0321','0322','0323',
+                       '0324','0325','0326','0327','0328','0329','0330',
+                       '0331','0401','0402','0403','0404','0405','0406',
+                       '0407','0408','0409','0410','0411','0412','0413',
+                       '0414','0415','0416','0417','0418','0419','0420',
+                       '0421','0422','0423'];
+    
+    function timeBar()
+    {
+        let timeLine = fileTimes.length * lenPerpic;
+        d3.select("#slider").transition()
+            .duration(timeLine)
+            .ease(d3.easeLinear)
+            .attrTween("width", function() {
+                var i = d3.interpolate(0, 1800);
+                var ci = d3.interpolate('#073a0e', '#BDF436');
+                var that = this;
+                return function(t) {
+                    that.style.width = i(t) + 'px';
+                    that.style.background = ci(t);
+                };
+            });
+        Bird = d3.select("#bird");
+        Bird.transition()
+            .duration(timeLine)
+            .ease(d3.easeLinear)
+            .attrTween("left", function() {
+                var i = d3.interpolate(0, 1800);
+                var that = this;
+                return function(t) {
+                    that.style.left = i(t) + 'px';
+                };
+            });
+        /*Bird.on("click", function(){
+            console.log("bird click");
+            if(birdClick == 0)
+            {
+                birdClick = 1;
+                Bird.attr("T", 0);
+            }
+            else
+            {
+                birdClick = 0;
+                Bird.attr("T", 1);
+            }
+        });*/
+        
+        d3.select("#birdDate")
+            .transition()
+            .duration(timeLine)
+            .ease(d3.easeLinear)
+            .attrTween("left", function() {
+                var i = d3.interpolate(100, 1900);
+                var that = this;
+                return function(t) {
+                    that.style.left = i(t) + 'px';
+                    let indices = parseInt(t * fileTimes.length);
+                    let dateAct = fileTimes[indices];
+                    let month = dateAct.substr(0, 2) == '03'? "March": "April";
+                    that.innerHTML = month + '.' + dateAct.substr(2, 2);;
+                };
+            });
+    }
+
+    var layout = d3.layout.cloud()
+    const textScaler = d3.scaleLinear()
+    function updateData(cnt){
+        if(cnt >= fileTimes.length)
+            return;
+        CurrDateIndices = cnt;
+
+        d3.csv(`../data/cloud.csv`).then(data => {             
+            data.forEach(d => {
+                d.frequency = +d.frequency;
+            }); 
+            data = data.filter(datum => datum.date === fileTimes[cnt])
+            textScaler.domain(d3.extent(data, d => d.frequency)).range([24,45]);
+
+            layout
+                .size([layoutWidth, layoutHeight])
+                .words(data.map(d => ({ text: d.word, size: d.frequency**2, date:d.datestring})))
+                .padding(2)
+                // .fontSize(d => Math.pow(Math.log(d.size),1.5)*8)
+                .fontSize(d => textScaler(d.size))
+                //.attr('transform',`translate(0, 0)`)
+                .rotate(0)
+                .on("end", draw);
+            layout.start();
+
+            function draw(words) {
+                mainGroup.selectAll('.cloud').transition().duration(1200).style('opacity',0)       
+                var wordCloud = mainGroup.append("g")
+                    // .attr("transform", `translate(${layout.size()[0]/2+innerWidth/3},${layout.size()[1]/2-20})`)
+                    // .attr('clip-path','url(#bird-clip)')
+                    .attr("transform", `translate(${layout.size()[0]/2+innerWidth/3.5},${layout.size()[1]/2+20})`)
+                    .selectAll("text")
+                    .data(words)
+                    .attr('id',d=>`${d.datestring}`)
+                var words = layout.words()
+                words.forEach(function (d, i) {
+                });
+                wordCloud.enter().append("text").attr('class','cloud')
+                        .style("font-size", function(d) { return d.size + "px"; })
+                        .attr("text-anchor", "middle")             
+                        .style('fill', (d,i) => color(i%20))
+                        .style('font-family', 'Monaco, serif')
+                        .attr("transform", function(d) {
+                            return "translate(" + [d.x, d.y] + ")rotate(" + d.rotate + ")";
+                        })
+                        .text(d => d.text)
+                        .style('opacity', 0)
+                        .transition().duration(1200).style('opacity',1);                
+            }
+            }) 
+         
+        setTimeout(() => {updateData(cnt+1);}, lenPerpic);
+    }
+    updateData(0); 
+    timeBar();
+
+    d3.interval(()=>{
+        updateData(0); 
+        timeBar();
+    }, lenPerpic * fileTimes.length);
+
+</script>
+</body>
+</html>

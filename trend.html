@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>数据可视化demo</title>
+    <link href="../styles/common.css" rel="stylesheet">
+    <script src="../scripts/Plugin/d3.min.js"></script>
+    <script src="../scripts/Plugin/d3-v6-tip.js"></script>
+    <script src="../scripts/Plugin/jquery-3.4.1.min.js"></script>
+    <script src="../scripts/Plugin/echarts.min.js"></script>
+    <script src="../scripts/common.js"></script>
+    <link rel="stylesheet" href="../styles/d3-tip.css">
+</head>
+<style>
+    .date {
+        font-family: Open Sans;
+        /* 设置 datestring 的字体 */
+        font-size: 2px
+    }
+
+    .popular {
+        font-family: cursive;
+        /* 设置 likes、replies 和 retweets 的字体 */
+        color: rgb(94, 58, 5);
+        font-size: 1.5px
+    }
+
+    .con {
+        display: flex;
+        justify-content: center;
+    }
+</style>
+
+<body>
+    <!--顶部-->
+    <header class="header left">
+        <div class="left nav">
+            <ul>
+                <li><i class="nav_3"></i><a href="prefix.html">前言</a></li>
+                <li><i class="nav_1"></i><a href="wordcloud.html">关键词演进</a> </li>
+                <li><i class="nav_2"></i><a href="Emo.html">推文情绪分布</a> </li>
+                </ul>
+        </div>
+        <div class="header_center left" style="position:relative">
+            
+            <h2><strong>GPT舆论分析可视化</strong></h2>
+    
+        </div>
+        <div class="right nav text_right">
+            <ul>
+                <li class="nav_active"><i class="nav_3"></i><a href="trend.html">舆情趋势</a> </li>
+                <li><i class="nav_4"></i><a href="chronic.html">用户组成</a> </li>
+                <li><i class="nav_5"></i><a href="Net.html">关注网络</a> </li>
+            </ul>
+        </div>
+    </header>
+    <!--内容部分-->
+    <div class="con left" style="width:50%;">
+        <!--统计分析图-->
+        <div class="div_any">
+            <div class="left div_any01" style="width:100%;">
+                <div class="div_any_child" style="width:98%; height: 800px; position:relative;">
+                    <div class="div_any_title">情绪-主题河流</div>
+                    <svg width="1140" height="800" id="mainsvg" class="svgs" style="position: absolute; top: 40px; left: -50px;"></svg>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="con right" style="width:50%;">
+      <div class="div_any">
+          <div class="left div_any01" style="width:100%;">
+              <div class="div_any_child" style="width:98%;position:relative;height: 800px;">
+                  <div class="div_any_title">用户级别 vs. 转评赞</div>
+                  <div id="histogramChart3" style="width: 90%; height: 90%; display: inline-block; margin-top: 15px;"></div>
+              </div>
+          </div>
+      </div>
+
+    <script>
+        // The following code is the typical routine of my d3.js code. 
+        // const svg = d3.select('svg');
+        const svg = d3.select('#mainsvg')
+        const width = svg.attr('width');
+        const height = svg.attr('height');
+        const KEYS = ['Anger', 'Disgust', 'Sadness', 'Fear', 'Surprise', 'Joy']
+        // const KEYS = ['Joy', 'Surprise', 'Anger', 'Disgust', 'Fear', 'Sadness']
+        
+        // const stack = d3.stack().keys(KEYS).order(d3.stackOrderAscending).offset(d3.stackOffsetNone)
+        const stack = d3.stack().keys(KEYS).order(d3.stackOrderAppearance).offset(d3.stackOffsetWiggle)
+        const xScale = d3.scaleTime();
+        const yScale = d3.scaleLinear();
+        let dateFormat = d3.timeFormat("%Y-%m-%d");
+        const margin = { top: 40, bottom: 20, left: 80, right: 200 };
+        const innerWidth = width - margin.left - margin.right;
+        const innerHeight = height - margin.top - margin.bottom;
+        const mainGroup = svg.append('g').attr('id', 'maingroup')
+            .attr('transform', `translate(${margin.left}, ${margin.top})`);
+        // const color = d3.scaleOrdinal(d3.schemePastel1.concat(d3.schemePastel2))
+        // const color = d3.scaleOrdinal()
+        const emotionColorIndices = {Anger: 'rgba(255, 0, 0, .6)', Surprise: 'rgba(43, 211, 203, .6)',       // red / brown
+                                    Fear: 'rgba(16, 161, 40, .6)', Joy: 'rgba(247, 161, 32, .9)',            // gray / orange
+                                    Sadness: 'rgba(59, 10, 233, .6)', Disgust: 'rgba(212, 30, 236, .6)'}; // blue / purple
+        const area = d3.area().x(d => xScale(d.data.date)).y1(d => yScale(d[1])).y0(d => yScale(d[0])).curve(d3.curveCardinal.tension(0.5));
+        const stackData = [];
+        const topData = [];
+        const tip = d3.tip().html((event, d) => `
+                            <span class="date">${d.datestring}</span><br>
+                            <span class="popular">❤️${d.likes} ✍️${d.replies} 🔄${d.retweets}</span>
+                            `)
+            .attr('class', 'd3-tip')
+        // tip.style('font-family', 'Old Standard TT')
+        mainGroup.call(tip)
+        const tipele = document.getElementsByClassName('d3-tip')[0];
+        const emoDict = {
+            'Anger': '😠',
+            'Disgust': '🤮',
+            'Fear': '😨',
+            'Joy': '🤣',
+            "Sadness": '😭',
+            'Surprise': '😮'
+        }
+        d3.csv('../data/river.csv').then(async data => {
+            const alldates = Array.from(new Set(data.map(d => d.datestring)));
+            alldates.sort((a, b) => {
+                return new Date(a) - new Date(b);
+            })
+            alldates.forEach(d => {
+                let newItem = { 'date': new Date(d) };
+                KEYS.forEach(k => {
+                    newItem[k] = data.find(datum => datum.datestring === d && datum.emotion === k);
+                    if (!newItem[k]) {
+                        newItem[k] = 0;
+                    } else {
+                        newItem[k] = newItem[k].nums;
+                    }
+                });
+                stackData.push(newItem);
+            });
+            const stackedData = stack(stackData);
+            // setting scales; 
+            yScale
+                .domain([-300, d3.max(stackedData, item1 => d3.max(item1, item2 => item2[1]))])
+                .range([innerHeight * 0.6, 0]);
+
+            xScale.domain(d3.extent(alldates.map(d => new Date(d)))).range([0, innerWidth]);
+
+            // color.domain(KEYS).range([d3.rgb('#FF0000'),d3.rgb('#')])
+
+            // drawing axes;         
+            let xAxis = d3.axisBottom(xScale).tickSize(-innerHeight * .82);
+            mainGroup.append('g')
+                .attr('fill', 'white')
+                .call(xAxis)
+                .attr("transform", `translate(5, ${innerHeight * 0.85})`)
+                .select(".domain").remove()
+            mainGroup.selectAll(".tick")
+                .style("color", "white");
+            // graw grids
+            const gridSize = 10;
+            for (let y = -gridSize; y < innerHeight - 5 * gridSize; y += gridSize) {
+                mainGroup.append("line")
+                    .attr("x1", 0)
+                    .attr("y1", y)
+                    .attr("x2", innerWidth)
+                    .attr("y2", y)
+                    .attr("stroke", "lightgray")
+                    .attr("opacity", 0.3);
+            }
+            // data-join;
+            const Tooltip = mainGroup
+                .append("text")
+                .attr("x", innerWidth/2-40)
+                .attr("y", 10)
+                .style("opacity", 0)
+                .style("font-size", 17)
+                .attr('text-anchor', 'middle')
+                .attr('fill', 'white')
+            mainGroup.selectAll('.riverPath')
+                .data(stackedData).join('path')
+                .attr('class', 'myArea').attr('d', area).attr('fill', d => emotionColorIndices[d.key])
+                .on('mouseover', (event, d) => {
+                    d3.selectAll('.myArea').style('opacity', .2)
+                    d3.select(event.currentTarget).style('stroke', 'black').style('opacity', 1)
+                    Tooltip.style("opacity", 1)
+                    let [x, y] = d3.pointer(event);
+                    let date = xScale.invert(x);
+                    let formattedDate = dateFormat(date);
+                    let item = data.find(datum => datum.datestring === formattedDate.toString()
+                        && datum.emotion === d.key)
+                    d3.select('.d3-tip')
+                        .style('top', `${event.y + $(window).scrollTop() - tipele.offsetHeight - 10}px`)
+                        .style('left', `${event.x + $(window).scrollLeft() - tipele.offsetWidth / 2}px`);
+                    tip.isShown = true;
+                    tip.show(event, item)
+
+                    d3.select('.d3-tip').select('#like').text(`❤️ ${likes}`);
+                    box.select('#retweet').text(`🔄 ${retweets}`);
+                    box.select('#comment').text(`✍️ ${comments}`);
+                })
+                .on('mouseout', (event, d) => {
+                    d3.selectAll('.myArea').style('opacity', 1).style('stroke', 'none')
+                    Tooltip.style("opacity", 0)
+                    tip.isShown = false;
+                    tip.hide(event, d)
+                })
+                .on('mousemove', (event, d) => {
+                    Tooltip.text(d.key + " " + emoDict[d.key])
+                    let [x, y] = d3.pointer(event);
+                    let date = xScale.invert(x);
+                    let formattedDate = dateFormat(date);
+                    let item = data.find(datum => datum.datestring === formattedDate.toString()
+                        && datum.emotion === d.key)
+                    if (tip.isShown) {
+                        event.stopPropagation()
+                        d3.select('.d3-tip')
+                            .style('top', `${event.y + $(window).scrollTop() - tipele.offsetHeight - 10}px`)
+                            .style('left', `${event.x + $(window).scrollLeft() - tipele.offsetWidth / 2}px`);
+                        tip.show(event, item);
+                    }
+                })
+
+            var legendItems = []
+
+            // const allemotions = Array.from(new Set(data.map(d => d.emotion)));
+            const allemotions = ['Joy','Surprise', 'Fear', 'Sadness', 'Disgust', 'Anger']
+            allemotions.forEach(d => {
+                let newItem = { 'name': d };
+                newItem['color'] = emotionColorIndices[d]
+                legendItems.push(newItem)
+            })
+
+
+            mainGroup.selectAll('.legend').data(legendItems).join('g').attr('class', 'legend')
+                .call(g => g.append('rect').attr('x', (d, i) => (i)/legendItems.length*innerWidth).attr('y', -35).attr('width', 20).attr('height', 10).style('fill', d => d.color))
+                .call(g => g.append('text').attr('x', (d, i) => (i)/legendItems.length*innerWidth+30).attr('y', -35).text(d => d.name).attr("dy", "0.65em").style('font-size', 13).attr('fill', 'white'))
+
+            // mainGroup.append('rect').attr('x', innerWidth * .89).attr('y', -35).attr('width', 100).attr('height', 99).attr('fill', 'none').attr('stroke', 'white')
+            d3.selectAll('.tick text').attr('font-size', '1em');
+            d3.selectAll('#xaxis text').attr('y', '10')
+        });
+
+        const Svg = d3.select("#histogramChart3").append("svg").attr("width", 1000).attr("height", 800);
+
+        d3.csv("../data/data_bubble.csv").then((data) => {
+
+            data.forEach((d) => {
+                d.likes = +d.likes;
+                d.sumCommentsRetweets = +d.sumCommentsRetweets;
+                d.followers = +d.followers;
+            });
+
+            const xScale = d3.scaleLog().domain([0.1, d3.max(data, (d) => d.likes)]).nice().range([margin.left * 1.5, width - 1.5*margin.right]);
+            const yScale = d3.scaleLog().domain([0.1, d3.max(data, (d) => d.sumCommentsRetweets)]).nice().range([height - 3.5*margin.bottom, 1.5*margin.top]);
+
+            const rScale = d3.scaleLog().domain([1, d3.max(data, (d) => d.followers)]).range([2.5, 20]);
+
+            const colorScale = d3
+                .scaleLinear()
+                .domain([0, d3.max(data, (d) => Math.log(d.followers)) / 2, d3.max(data, (d) => Math.log(d.followers))])
+                .range(["red", "yellow", "green"]);
+
+            const xAxis = d3.axisBottom(xScale).tickFormat(d3.format(",.0f")).tickSizeOuter(0).ticks(5);
+            const yAxis = d3.axisLeft(yScale).tickFormat(d3.format(",.0f")).tickSizeOuter(0).ticks(5);
+
+            const xAxisGroup = Svg
+                .append("g")
+                .attr("transform", `translate(0, ${height - 3.5*margin.bottom})`)
+                .call(xAxis)
+                .selectAll("text")
+                .style("text-anchor", "end")
+                .style("fill", "white")
+                .attr("dx", ".4em")
+                .attr("dy", ".75em");
+            xAxisGroup.selectAll("line").style("stroke", "white");
+            xAxisGroup.select(".domain").style("stroke", "white");
+            
+            Svg
+                .append("text")
+                .attr("x", width - 1.25 * margin.right)
+                .attr("y", height - 3 * margin.bottom)
+                .attr("text-anchor", "middle")
+                .style("fill", "white")
+                .style("font-size", "30px")
+                .text("Likes");
+
+            const yAxisGroup = Svg.append("g").attr("transform", `translate(${margin.left*1.5 - 5}, 0)`).style("fill", "white").call(yAxis);
+
+            yAxisGroup.selectAll("text")
+                .style("fill", "white");
+
+            Svg
+                .append("text")
+                .attr("transform", "rotate(-90)")
+                .attr("x", -height / 2.5)
+                .attr("y", margin.left / 1.5)
+                .attr("text-anchor", "middle")
+                .style("fill", "white")
+                .style("font-size", "25px")
+                .text("Comments & Retweets");
+
+            d3.selectAll("#histogramChart3 svg .axis g.tick line").style("stroke", "white");
+            d3.selectAll("#histogramChart3 svg .axis path.domain").style("stroke", "white");
+            yAxisGroup.select(".domain").style("stroke", "white");
+
+
+            const tooltip = d3
+                .select("body")
+                .append("div")
+                .attr("class", "tooltip")
+                .style("opacity", 0)
+                .style("position", "absolute")
+                .style("background", "rgba(255, 255, 255, 0.8)")
+                .style("padding", "5px")
+                .style("border", "1px solid #ccc")
+                .style("border-radius", "5px");
+
+            const bubbles = Svg
+                .selectAll("circle")
+                .data(data)
+                .enter()
+                .append("circle")
+                .attr("cx", (d) => Math.max(margin.left + rScale(d.followers), Math.min(width - margin.right - rScale(d.followers), d.likes !== 0 ? xScale(d.likes) : xScale(0.1))))
+                .attr("cy", (d) => Math.max(margin.top + rScale(d.followers), Math.min(height - margin.bottom - rScale(d.followers), d.sumCommentsRetweets !== 0 ? yScale(d.sumCommentsRetweets) : yScale(0.1))))
+                .attr("r", (d) => rScale(d.followers))
+                .attr("fill", (d) => colorScale(Math.log(d.followers)))
+                .attr("opacity", 0.8)
+                .on("mouseover", (event, d) => {
+                    d3.select(event.currentTarget).style("stroke", "white").style("stroke-width", 5).style('filter', `drop-shadow(0 0 10px #ffffff)`);
+                    tooltip.transition().duration(200).style("opacity", 0.9);
+                    tooltip
+                        /*.html(
+                            `Username: ${d.Usernames}<br>Followers: ${d3.format(",")(d.followers)}<br>Likes: ${d3.format(",")(d.likes)}<br>Comments & Retweets: ${d3.format(",")(d.sumCommentsRetweets)}<br>Location: ${d.location}<br>Profession: ${d.profession}`
+                        )*/
+                        .html(
+                            `
+                    <div class="container" style="z-index: 999999; display: flex; align-items: center; flex-direction: row; background: #FFFFFF; max-width: 440px; border: 1px solid #EEEEEE; border-radius: 2px; box-shadow: 0 4px 12px rgba(#000, 0.12); margin: 0 0 0 20px; padding: 10px 20px; font-family: 'Open Sans', sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;">
+                        <div class="at-floating-card__content">
+                            <h2 id="username" class="at-floating-card__title" style="margin: 0 0 6px; padding: 0; color: #444444; font-size: 14px !important; font-weight: 700; line-height: 1;">${d.Usernames}</h2>
+                            <h3 id="job" class="at-floating-card__sub-title" style="margin: 0 0 6px; padding: 0; color: #999999; font-size: 12px !important; font-weight: 600;">👩‍🎓 ${d.profession} 🌐 ${d.location}</h3>
+                            <div class="at-floating-card__footer" style="color: #666666; font-size: 12px; font-weight: 600;">
+                                <span id="follower" style="color: inherit; font-size: 10px;"> ❤️ ${d.likes} </span>
+                                <span id="follower" style="color: inherit; font-size: 10px;"> 🙌 ${d.followers} </span>
+                                <span id="follower" style="color: inherit; font-size: 10px;"> ✍️ ${d.sumCommentsRetweets} </span>
+                            </div>
+                        </div>
+                    </div>
+                    `
+                        )
+                        .style("left", event.pageX + 10 + "px")
+                        .style("top", event.pageY - 28 + "px");
+                })
+                .on("mousemove", (event) => {
+                    tooltip.style("left", event.pageX + 10 + "px").style("top", event.pageY + 10 + "px");
+                })
+                .on("mouseout", () => {
+                    d3.select(event.currentTarget).style("stroke", 'none').style('filter', 'none');
+                    tooltip.transition().duration(500).style("opacity", 0);
+                });
+
+
+            const sizeLegend = Svg.append("g")
+                .attr("transform", `translate(${width - margin.right - legendSpace / 2}, ${height / 2 + colorScale.range().length * 25 + 50})`);
+
+            const sizeLegendTitle = sizeLegend.append("text")
+                .attr("x", 0)
+                .attr("y", -20)
+                .text("Followers");
+
+            const sizes = [1, 1000, 130000000]
+            sizeLegend.selectAll("circle")
+                .data(sizes)
+                .enter()
+                .append("circle")
+                .attr("r", (d) => rScale(d))
+                .attr("cy", (d, i) => i * 35)
+                .attr("fill", (d) => colorScale(Math.log(d)))
+                .attr("opacity", 0.8);
+
+            const sizeTexts = sizeLegend.selectAll("text.size-label").data(sizes);
+
+            sizeTexts
+                .enter()
+                .append("text")
+                .attr('class', 'size-label')
+                .merge(sizeTexts)
+                .attr("x", 25)
+                .attr("y", (d, i) => i * 35 + 5)
+                .text((d) => d);
+
+        });
+
+
+    </script>
+</body>
+
+</html>

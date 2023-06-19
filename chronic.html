@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>数据可视化demo</title>
+    <link href="../styles/common.css" rel="stylesheet">
+    <link href="../styles/bootstrap.min.css" rel="stylesheet">
+    <link href="../styles/bootstrap-table.css" rel="stylesheet">
+    <link href="../styles/pagination.css" rel="stylesheet">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="../scripts/Plugin/jquery-3.3.1.min.js"></script>
+    <script src="../scripts/Plugin/echarts.min.js"></script>
+    <script src="../scripts/Plugin/jquery.pagination.min.js"></script>
+    <script src="../scripts/common.js"></script>
+    <script src="../scripts/chronic.js"></script>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <script src="https://d3js.org/d3-fetch.v2.min.js"></script>
+    <script src="https://d3js.org/topojson.v3.min.js"></script>
+    <script src="https://d3js.org/d3-geo-projection.v2.min.js"></script>
+
+</head>
+
+<body>
+    <!--顶部-->
+    <!--顶部-->
+    <header class="header left">
+        <div class="left nav">
+            <ul>
+                <li><i class="nav_3"></i><a href="prefix.html">前言</a></li>
+                <li><i class="nav_1"></i><a href="wordcloud.html">关键词演进</a> </li>
+                <li><i class="nav_2"></i><a href="Emo.html">推文情绪分布</a> </li>
+                </ul>
+        </div>
+        <div class="header_center left" style="position:relative">
+            
+            <h2><strong>GPT舆论分析可视化</strong></h2>
+    
+        </div>
+        <div class="right nav text_right">
+            <ul>
+                <li><i class="nav_3"></i><a href="trend.html">舆情趋势</a> </li>
+                <li class="nav_active"><i class="nav_4"></i><a href="chronic.html">用户组成</a> </li>
+                <li><i class="nav_5"></i><a href="Net.html">关注网络</a> </li>
+            </ul>
+        </div>
+    </header>
+
+    <!--内容部分-->
+    <div class="con left" style="width:40%;">
+        <!--统计分析图-->
+        <div class="div_any">
+            <div class="left div_any01" style="width:100%;">
+                <div class="div_any_child" style="width:98%; height: 1200px; position:relative;">
+                    <div class="div_any_title">领域分布</div>
+                    <p id="pieChart1" class="p_chart" style="height: 600px;"></p>
+                    <p id="pieChart2" class="p_chart" style="height: 160px; top: -8%; right: -20%"></p>
+                    <div id="mainpiechart" class="p_chart" style="display: inline-block; margin-top: 15px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="con right" style="width:60%;">
+      <div class="div_any">
+          <div class="left div_any01" style="width:100%;">
+              <div class="div_any_child" style="width:98%;position:relative;height: 1200px;">
+                  <div class="div_any_title">地域分布</div>
+                  <div id="world-map" style="display: inline-block; margin-top: 15px;"></div>
+              </div>
+          </div>
+    </div>
+
+    <script>
+        const width = 600;
+        const height = 600;
+        const margin = { top: 40, right: 40, bottom: 40, left: 40 };
+        const colorScale = d3.scaleOrdinal()
+            .range(d3.schemeCategory10);
+        const subColorScale = d3.scaleOrdinal().range(d3.schemePastel2);
+
+        // 在 createPieChart 函数内部添加一个用于存储当前显示的小饼图的变量
+        let currentSubPie = null;
+
+        async function createPieChart(data, container) {
+            // 计算数据集中 number_of_users 的总和
+            const totalNumberOfUsers = data.reduce((acc, cur) => acc + Number(cur.number_of_users), 0);
+
+            // 设置颜色比例尺
+            colorScale.domain(data.map(d => d.profession));
+            var colors = [];
+            var dataUsed = [];
+            data.forEach(d=>
+            {
+                colors.push(colorScale(d.profession));
+                dataUsed.push({value: (d.number_of_users / totalNumberOfUsers * 100).toFixed(1), name: d.profession})
+            })
+
+            var pieChart1 = echarts.init(document.getElementById('pieChart1'));
+            pieChart1.setOption({
+                color: colors,
+                tooltip : {
+                trigger: 'item',
+                formatter: "{a}<br/>{b}<br/>{c}%"
+                },
+                calculable : true,
+                series : [
+                    {
+                        name:'人数占比',
+                        type:'pie',
+                        radius : [100, 250],
+                        center : ['50%', '48%'],
+                        // radius: '80%',
+                        roseType : 'area',
+                        x: '50%',
+                        sort : 'ascending',
+                        label: {
+                            "normal": {
+                                "show": true,
+                                "textStyle": {
+                                    "fontSize": 12.8
+                                }
+                            },
+                            "emphasis": {
+                                "show": true
+                            }
+                        },
+                        data: dataUsed
+                    }
+                ]
+            });
+
+            pieChart1.on('click', function (params) {
+                // 控制台打印数据的名称
+                console.log(params);
+                d3.csv("../data/data_sub_piechart.csv").then(subdata =>{
+                    const filteredData = subdata.filter(d => d.parent_profession === params.data.name);
+                    subColorScale.domain(filteredData.map(d => d.profession));
+
+                    var subcolors = [];
+                    var subUsed = [];
+                    const total = filteredData.reduce((acc, cur) => acc + Number(cur.number_of_users), 0);
+                    filteredData.forEach(d=>
+                    {
+                        subcolors.push(subColorScale(d.profession));
+                        subUsed.push({value: (d.number_of_users / total * 100).toFixed(1), name: d.profession})
+                    });
+
+                    var pieChart2 = echarts.init(document.getElementById('pieChart2'));
+                    pieChart2.setOption({
+                        color: subcolors,
+                        tooltip : {
+                        trigger: 'item',
+                        formatter: "{a}<br/>{b}<br/>{c}%"
+                        },
+                        calculable : true,
+                        series : [
+                            {
+                                name:'发帖占比',
+                                type:'pie',
+                                radius : [30, 50],
+                                center : ['50%', '50%'],
+                                radius: '80%',
+                                roseType : 'area',
+                                x: '60%',
+                                sort : 'ascending',
+                                data: subUsed
+                            }
+                        ]
+                    });
+                });
+            });
+        }
+
+        async function createMainPieChart() {
+            // 读取数据并画图
+            const data = await d3.csv("../data/data_piechart.csv");
+            createPieChart(data, document.querySelector("#mainpiechart"));
+        }
+
+        createMainPieChart();
+
+        // 创建SVG容器
+        const svg = d3.select('#world-map')
+            .append('svg')
+            .attr('width', 1200)
+            .attr('height', 700);
+
+        // 定义地图投影
+        const projection = d3.geoMercator()
+            .scale(160)
+            .translate([width, height/1.2]);
+
+        // 定义路径生成器
+        const path = d3.geoPath().projection(projection);
+
+        // 创建一个工具提示
+        const tooltip = d3.select("body")
+            .append("div")
+            .attr("class", "tooltip")
+            .style("opacity", 0)
+            .style("position", "absolute")
+            .style("background", "rgba(255, 255, 255, 0.8)")
+            .style("padding", "5px")
+            .style("border", "1px solid #ccc")
+            .style("border-radius", "5px");
+
+        // 加载世界地图的GeoJSON数据
+        d3.json('https://unpkg.com/world-atlas@2.0.2/countries-110m.json').then(world => {
+            // 绘制世界地图
+            svg.selectAll('path')
+                .data(topojson.feature(world, world.objects.countries).features)
+                .enter()
+                .append('path')
+                .attr('d', path)
+                .attr('fill', '#ccc')
+                .attr('stroke', '#fff')
+                .attr('stroke-width', 0.5);
+
+            // 加载csv文件
+            d3.csv('../data/data_map.csv').then(data => {
+                // 计算用户总数
+                const totalUsers = data.reduce((sum, country) => sum + +country.users, 0);
+
+                // 定义气泡大小的比例尺
+                const sizeScale = d3.scaleSqrt()
+                    .domain([0, d3.max(data, d => +d.users)])
+                    .range([0, 30]);
+
+                // 定义字体大小的比例尺
+                const fontSizeScale = d3.scaleSqrt()
+                    .domain([0, d3.max(data, d => +d.users)])
+                    .range([5, 20]);
+
+                // 定义世界银行地区颜色的比例尺
+                const colorScale = d3.scaleOrdinal()
+                    .domain([...new Set(data.map(d => d.region))])
+                    .range(d3.schemeCategory10);
+
+                // 绘制气泡
+                let timer;
+                const bubbles = svg.selectAll('circle')
+                    .data(data)
+                    .enter()
+                    .append('circle')
+                    .attr('cx', d => projection([+d.longitude, +d.latitude])[0])
+                    .attr('cy', d => projection([+d.longitude, +d.latitude])[1])
+                    .attr('r', d => sizeScale(+d.users))
+                    .attr('fill', d => colorScale(d.region))
+                    .attr('opacity', 0.8)
+                    .attr('stroke', '#fff')
+                    .attr('stroke-width', 0.5)
+                    .on("mouseenter", function (event, d) {
+                        tooltip.transition()
+                            .duration(200)
+                            .style("opacity", .9);
+                        tooltip.html(d.name + "<br/>" + "users：" + d.users)
+                            .style("left", (event.pageX + 10) + "px")
+                            .style("top", (event.pageY - 10) + "px");
+                    })
+                    .on("mousemove", function (event, d) {
+                        // 重置延迟计时器
+                        clearTimeout(timer);
+                        // 更新交互内容位置
+                        tooltip.style("left", (event.pageX + 10) + "px")
+                            .style("top", (event.pageY - 10) + "px");
+                    })
+                    .on("mouseleave", function (d) {
+                        // 延迟隐藏交互内容
+                        timer = setTimeout(function () {
+                            tooltip.transition()
+                                .duration(500)
+                                .style("opacity", 0);
+                        }, 500); // 延迟时间可根据需要进行调整
+                    });
+                // 绘制气泡上的文字
+                const labels = svg.selectAll('text')
+                    .data(data)
+                    .enter()
+                    .append('text')
+                    .attr('x', d => projection([+d.longitude, +d.latitude])[0])
+                    .attr('y', d => projection([+d.longitude, +d.latitude])[1])
+                    .attr('text-anchor', 'middle')
+                    .attr('dy', '.3em') // 垂直居中
+                    .text(d => {
+                        const bubbleSize = sizeScale(+d.users);
+                        const textValue = ((+d.users / totalUsers) * 100).toFixed(1) + '%';
+
+                        if (bubbleSize < 9) { // 气泡太小就不显示
+                            return '';
+                        } else {
+                            return textValue;
+                        }
+                    })
+                    .attr('font-size', d => fontSizeScale(+d.users))
+                    .attr('fill', 'white');
+
+                // 定义更新地图的函数
+                function updateMap() {
+                    // 更新SVG容器的尺寸
+                    width = window.innerWidth * 0.5;
+                    height = window.innerHeight * 0.5;
+
+                    // 更新SVG容器的大小
+                    svg.attr('width', width)
+                        .attr('height', height);
+
+                    // 更新地图投影和路径生成器
+                    projection
+                        .scale(width / 6.5)
+                        //.translate([width / 2, height / 1.6]);
+
+                    path.projection(projection);
+
+                    // 重新绘制背景地图
+                    svg.selectAll('path')
+                        .attr('d', path);
+
+                    // 更新气泡位置
+                    bubbles.attr('cx', d => projection([+d.longitude, +d.latitude])[0])
+                        .attr('cy', d => projection([+d.longitude, +d.latitude])[1]);
+                    // 更新文字位置和显示方式
+                    labels.attr('x', d => projection([+d.longitude, +d.latitude])[0])
+                        .attr('y', d => projection([+d.longitude, +d.latitude])[1])
+                        .attr('fill', function (d) {
+                            const bubbleSize = sizeScale(+d.users);
+                            const fontSize = fontSizeScale(+d.users);
+
+                            if (bubbleSize < 9) {
+                                return '';
+                            } else {
+                                return textValue;
+                            }
+                        })
+                        .attr('font-size', d => fontSizeScale(+d.users))
+                        .attr('fill', 'white');
+                };
+
+                // 调用函数进行初始绘制
+                updateMap();
+
+                // 监听窗口大小变化事件，并在窗口大小改变时重新绘制地图
+                window.addEventListener('resize', updateMap);
+            });
+        })
+    </script>
+</body>
+
+</html>

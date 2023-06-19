@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>EmotionDistribution</title>
+  <script src="../scripts/Plugin/d3.min.js"></script>
+  <script src="../scripts/Plugin/d3-v6-tip.js"></script>
+  <script src="../scripts/Plugin/jquery-3.4.1.min.js"></script>
+  <script src="../scripts/Plugin/echarts.min.js"></script>
+  <script src="../scripts/common.js"></script>
+  <link href="../styles/common.css" rel="stylesheet">
+</head>
+
+<body>
+    <!--顶部-->
+    <header class="header left">
+        <div class="left nav">
+            <ul>
+                <li class="nav_active"><i class="nav_3"></i><a href="prefix.html">前言</a></li>
+                <li><i class="nav_1"></i><a href="wordcloud.html">关键词演进</a> </li>
+                <li><i class="nav_2"></i><a href="Emo.html">推文情绪分布</a> </li>
+                </ul>
+        </div>
+        <div class="header_center left" style="position:relative">
+            
+            <h2><strong>GPT舆论分析可视化</strong></h2>
+    
+        </div>
+        <div class="right nav text_right">
+            <ul>
+                <li><i class="nav_3"></i><a href="trend.html">舆情趋势</a> </li>
+                <li><i class="nav_4"></i><a href="chronic.html">用户组成</a> </li>
+                <li><i class="nav_5"></i><a href="Net.html">关注网络</a> </li>
+            </ul>
+        </div>
+    </header>
+
+    <div class="con left">
+        <div style="text-align: left">
+            <div style="position:relative; color: white; top: 150px; margin-left: 20%;margin-right: 20%; line-height: 2.5; text-indent:3em">
+                <h2><strong>作为当前最为流行的 NLP 模型之一， GPT(Generative Pre-trained Transformer) 系列模型一经发布便引发了社会各界的广泛关注。其中，基于 GPT - 3.5 架构的大型语言模型 ChatGPT，可以执行问答、翻译、文本生成等各种自然语言处理任务，被广泛应用于智能客服、自动化写作等各种领域。</strong></h2>
+                <h2>有些人赞扬该模型的语言能力和改善医疗保健和教育等行业的潜力。另一些人则担忧使用这样一个强大工具所带来的道德影响，例如可能存在偏见或滥用生成的内容。此外，ChatGPT也成为技术社区内各种争议和讨论的话题。公众意见的复杂和多面性使得研究 ChatGPT 相关舆情热点和观点发布者的相互关系（网络结构）至关重要。</h2>
+                <h2>数据来源:
+                    1. 2023年3月10日-2023年4月23日之间以 ChatGPT 为关键词检索的英文推文数据（数据量22k）
+                    2. 在上述时间段内发布过 ChatGPT 相关推文并关注 OpenAI 账号的推特用户数据（数据量673）
+                </h2>
+                <h2>
+                    数据处理: 利用 Twitter Emotion Recognition 模型对推文进行情绪分类
+                </h2>
+            </div>
+        </div>
+    </div>
+</body>
